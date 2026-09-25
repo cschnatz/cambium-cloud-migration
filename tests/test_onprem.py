@@ -181,6 +181,24 @@ def test_failed_update_rolls_back():
     assert fs.calls[-1][1].endswith("/0/cn-srv/config/rollback")
 
 
+def test_update_rolls_back_after_a_transport_failure():
+    fs = FakeSession(responses={"/config/commit": requests.ReadTimeout("slow")})
+    with pytest.raises(requests.ReadTimeout):
+        controller(fs).update({"kind": "profile", "name": "AP", "payload": {"types": []}}, {"src": {}})
+    assert fs.calls[-1][1].endswith("/0/cn-srv/config/rollback")
+
+
+def test_html_answer_to_a_write_is_an_error():
+    fs = FakeSession(responses={"/config": FakeResp(text="<html>login</html>", content_type="text/html")})
+    with pytest.raises(ControllerError, match="HTML"):
+        controller(fs).assign("00:00:5E:00:53:01", {"nid": "N"})
+
+
+def test_empty_answer_to_a_write_is_fine():
+    fs = FakeSession(responses={"/config": FakeResp(text="", content_type="text/plain")})
+    controller(fs).assign("00:00:5E:00:53:01", {"nid": "N"})
+
+
 def test_profile_import_waits_for_a_wlan_the_controller_does_not_know_yet(monkeypatch):
     o = controller(FakeSession())
     monkeypatch.setattr(onprem_mod.time, "sleep", lambda s: None)

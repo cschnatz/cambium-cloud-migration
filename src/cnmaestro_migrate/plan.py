@@ -211,6 +211,11 @@ def prechecks(selection, export_errors, port_missing, allow_xv2_fw62):
     if selection.shared:
         stop.append(f"profile(s) also used by devices outside the selection — the override would move them too: "
                     f"{selection.shared}")
+    left_behind = {d["mac"]: profile_of(d) for d in selection.skipped_switches if profile_of(d) in selection.profiles}
+    if left_behind:
+        stop.append(f"switch(es) on a profile that gets the override but not moved (switch → profile): {left_behind} — "
+                    "they would reach the controller without being adopted; pass --include-switches or give them "
+                    "their own profile")
     moving = {d["mac"] for d in selection.migrate}
     lost = [m for m in port_missing if m in moving]
     if lost:

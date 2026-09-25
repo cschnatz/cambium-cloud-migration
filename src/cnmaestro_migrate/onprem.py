@@ -96,6 +96,10 @@ class OnPrem:
                                          "again later; it continues where it stopped.")
         if not r.ok:
             raise ControllerError(r.status_code, f"{method} {path}: {r.status_code} {r.text[:200]}")
+        if "html" in r.headers.get("content-type", "") or r.text.lstrip().startswith("<"):
+            # a proxy or login page with 2xx: the controller did not do what was asked
+            raise ControllerError(r.status_code, f"{method} {path}: the answer is an HTML page, not the controller "
+                                                 "API — is a proxy or login page in between?")
         return r.json() if r.headers.get("content-type", "").startswith("application/json") else {}
 
     def close(self):
@@ -152,10 +156,10 @@ class OnPrem:
         try:
             self.call("PUT", path, json=body)
             self.call("PUT", "config/commit")
-        except ControllerError:
+        except (ControllerError, requests.RequestException):
             try:
                 self.call("PUT", "config/rollback")
-            except ControllerError:
+            except (ControllerError, requests.RequestException):
                 pass
             raise
 

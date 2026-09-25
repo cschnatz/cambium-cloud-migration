@@ -4,6 +4,9 @@ Port settings live per port, not in the switch profile, so moving a switch loses
 copied. The cloud stops returning them once the device is deleted from the cloud account.
 """
 PORT_SECTIONS = ("security", "physical")
+# Network fields compared after adoption besides the VLANs. security/physical are copied but not compared:
+# their stored format on the controller is not known, and a false mismatch would keep a good switch "incomplete".
+COMPARED_FIELDS = ("accessMode", "isNativeVlanTagged")
 
 
 def port_config(port):
@@ -52,6 +55,10 @@ def port_mismatches(plan, controller_ports):
         elif _vlan_set(have.get("vlans")) != _vlan_set(want.get("vlans")) or str(have.get("nativeVlan")) != want["nativeVlan"]:
             out.append(f"{label}: stored {have.get('nativeVlan')}/{have.get('vlans')} instead of "
                        f"{want['nativeVlan']}/{want['vlans']}")
-        elif str(cur.get("nativeVlanId")) != want["nativeVlan"]:
-            out.append(f"{label}: device PVID {cur.get('nativeVlanId')} instead of {want['nativeVlan']}")
+        else:
+            fields = [f"{label}: stored {k} {have.get(k)} instead of {want[k]}" for k in COMPARED_FIELDS
+                      if k in want and str(have.get(k)) != str(want[k])]
+            out += fields
+            if not fields and str(cur.get("nativeVlanId")) != want["nativeVlan"]:
+                out.append(f"{label}: device PVID {cur.get('nativeVlanId')} instead of {want['nativeVlan']}")
     return out

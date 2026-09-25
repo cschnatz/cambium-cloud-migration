@@ -60,3 +60,15 @@ def test_mismatches_compare_stored_and_live_values():
     assert port_mismatches(plan, onprem) == ["P1: device PVID 1 instead of 85", "P2: not stored on the controller"]
     onprem[0]["config"]["network"] = {"vlans": "1", "nativeVlan": "1"}
     assert port_mismatches(plan, onprem)[0] == "P1: stored 1/1 instead of 85/85"
+
+
+def test_mismatches_compare_access_mode_and_native_tagging():
+    plan = [{"mac": "a", "pmac": "P", "config": {"network": {"vlans": "1,10", "nativeVlan": "1", "accessMode": 2,
+                                                             "isNativeVlanTagged": False}}}]
+    onprem = [{"mac": "a", "ifIndex": 4, "nativeVlanId": 1,
+               "config": {"network": {"vlans": "1,10", "nativeVlan": "1", "accessMode": "2", "isNativeVlanTagged": False}}}]
+    assert port_mismatches(plan, onprem) == []
+    onprem[0]["config"]["network"]["accessMode"] = 1
+    onprem[0]["config"]["network"]["isNativeVlanTagged"] = True
+    assert port_mismatches(plan, onprem) == ["P4: stored accessMode 1 instead of 2",
+                                             "P4: stored isNativeVlanTagged True instead of False"]

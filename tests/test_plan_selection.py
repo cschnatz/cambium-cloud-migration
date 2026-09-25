@@ -141,6 +141,12 @@ def test_prechecks_stop_on_each_reason():
     assert "XV2-2" in stop[3] and "gg" in stop[3] and "--allow-xv2-fw62" in stop[3]
 
 
+def test_prechecks_stop_when_a_skipped_device_shares_an_affected_profile():
+    sel = plan.select([device("aa", "N", "", "Shared"), device("sw", "N", "", "Shared", mode="sw")], "N")
+    stop = plan.prechecks(sel, [], [], False)
+    assert len(stop) == 1 and "Shared" in stop[0] and "sw" in stop[0] and "--include-switches" in stop[0]
+
+
 def test_prechecks_accept_xv2_2_when_allowed():
     sel = plan.select([device("gg", "N", "", "Mesh", model="XV2-2", fw="6.2-r14")], "N")
     assert plan.prechecks(sel, [], [], True) == []

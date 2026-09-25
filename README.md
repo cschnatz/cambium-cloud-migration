@@ -196,6 +196,7 @@ The run stops **before it changes anything** when:
 |---|---|
 | A profile or WLAN export failed | Run again. If it persists, check the account in the cloud |
 | A profile is also used by devices outside the selection | The override would move them too; the message lists them. Clone the profile in the cloud and move the other devices to the clone, or migrate the whole network without `--site` |
+| A switch that is not moved uses a profile that gets the override | It would reach the controller without being adopted. Pass `--include-switches`, or give it its own profile in the cloud |
 | A switch to be moved has no port backup | The cloud returned no ports. Switches are not moved without a backup |
 | XV2-2 on firmware 6.2 | These went offline after a profile push in the field. Upgrade the firmware first, or pass `--allow-xv2-fw62` and watch them |
 | Network not found | The message lists the networks that have devices |
