@@ -63,3 +63,9 @@ class FakeSession:
         """Changing requests, without login and logout."""
         return [c for c in self.calls if c[0] in ("POST", "PUT", "DELETE")
                 and not c[1].split("?")[0].endswith(("/cn-srv/login", "/cn-srv/logout"))]
+
+
+def device(mac, nid, tid="", prof=None, mode="wi-fi", online=True, model="E410", fw="6.6.0"):
+    """A cloud device row as returned by tree/devices, reduced to the fields the tool reads."""
+    return {"mac": mac, "model": model, "mode": mode, "nid": nid, "tid": tid, "sys": {"online": online},
+            "mgmt": {"actSw": fw}, "config": {"profile": prof} if prof else {}}
