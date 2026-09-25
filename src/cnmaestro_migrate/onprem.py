@@ -71,7 +71,13 @@ class OnPrem:
         if not r.ok:
             self._state = "failed"
             raise ControllerLoginError(f"controller login failed with HTTP {r.status_code}. {LOGIN_ADVICE}")
-        self.s.headers.update({"Authorization": "Bearer " + r.json()["token"], "x-cidx": PREFIX})
+        try:
+            token = r.json()["token"]
+        except (ValueError, KeyError, TypeError):
+            self._state = "failed"
+            raise ControllerLoginError("the controller answered the login without a token — is --controller the "
+                                       "controller itself and not a proxy or login page? " + LOGIN_ADVICE) from None
+        self.s.headers.update({"Authorization": "Bearer " + token, "x-cidx": PREFIX})
         self._state = "open"
         self.s.get(f"{self.base}/cn-srv/user/me", timeout=30)     # sets XSRF-TOKEN; writes fail with 403 without it
 

@@ -2,15 +2,21 @@
 import atexit
 import sys
 
-from .cloud import Cloud, CloudAuthError
+import requests
+
+from .cloud import Cloud, CloudAuthError, CloudError
 from .config import ConfigError, load_settings
 from .migrate import prepare_workdir, run
-from .onprem import ControllerLoginError, ControllerSessionError, OnPrem
+from .onprem import ControllerError, ControllerLoginError, ControllerSessionError, OnPrem
+
+# Errors that end a run with a message instead of a traceback. The run is idempotent: the same command continues.
+RUN_ERRORS = (ControllerLoginError, ControllerSessionError, CloudAuthError, CloudError, ControllerError,
+              requests.RequestException)
 
 
 def flush_input():
     """Drop keys pressed while waiting, so a stray Enter cannot answer the deletion prompt."""
-    if not sys.stdin.isatty():
+    if not sys.stdin or not sys.stdin.isatty():
         return
     try:
         import termios
@@ -22,11 +28,13 @@ def flush_input():
 
 
 def confirm(prompt):
-    """Ask for the account ID. End of input counts as "no", never as consent."""
+    """Ask for the account ID. Missing, closed or unreadable input counts as "no", never as consent."""
+    if not sys.stdin:
+        return ""
     flush_input()
     try:
         return input(prompt)
-    except EOFError:
+    except (EOFError, OSError):
         return ""
 
 
@@ -44,7 +52,7 @@ def main(argv=None):
     try:
         with onprem:
             return run(s, cloud, onprem, confirm)
-    except (ControllerLoginError, ControllerSessionError, CloudAuthError) as e:
+    except RUN_ERRORS as e:
         print(f"error: {e}", file=sys.stderr)
         return 2
     except KeyboardInterrupt:

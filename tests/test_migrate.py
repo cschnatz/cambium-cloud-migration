@@ -217,7 +217,32 @@ def test_devices_already_waiting_are_adopted_without_a_new_override(tmp_path):
     assert "override" not in kinds(cloud.calls) and ("delete", ("bb",)) in cloud.calls
 
 
+def test_switch_in_the_queue_is_not_adopted_without_include_switches(tmp_path):
+    c = FakeController()
+    c.queued.add("sw")                                   # left in the queue by an earlier run
+    data = account(device("aa", "Main Office", "Lobby", "AP"), device("sw", "Main Office", "Lobby", "Switch", mode="sw"))
+    cloud = FakeCloud(data, c)
+    assert migrate.migrate_network(settings(tmp_path), "Main Office", cloud, c, typed("ACME")) == "done"
+    assert ("assign", "sw") not in c.calls and ("delete", ("aa",)) in cloud.calls
+
+
+def test_only_a_queued_skipped_switch_is_nothing_to_migrate(tmp_path):
+    c = FakeController()
+    c.queued.add("sw")
+    cloud = FakeCloud(account(device("sw", "Main Office", "Lobby", "Switch", mode="sw")), c)
+    assert migrate.migrate_network(settings(tmp_path), "Main Office", cloud, c, typed("ACME")) == "nothing"
+    assert c.calls == [] and kinds(cloud.calls) == ["read"]
+
+
 # --- several networks ---------------------------------------------------------------
+
+def test_failed_precheck_continues_but_fails_the_exit_code(tmp_path):
+    c = FakeController()
+    cloud = FakeCloud(account(), c)
+    s = settings(tmp_path, networks=("Nowhere", "Main Office"), execute=False)
+    assert migrate.run(s, cloud, c, typed("ACME")) == 1
+    assert [x for x in cloud.calls if x[0] == "read"] == [("read", "Nowhere"), ("read", "Main Office")]
+
 
 def test_incomplete_network_stops_the_chain(tmp_path):
     c = FakeController()

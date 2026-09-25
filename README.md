@@ -170,9 +170,9 @@ Each network ends with `==== RESULT <network>: <status>`:
 
 | Exit code | Meaning |
 |---|---|
-| `0` | No network was left `incomplete` (check each `RESULT` line) |
-| `1` | A network ended `incomplete` |
-| `2` | Settings missing or unusable, the controller login failed, or a session was rejected |
+| `0` | Every network ended `done`, `nothing` or `dry_run` |
+| `1` | A network ended `incomplete` or `precheck_failed` (a failed pre-check does not stop the following networks) |
+| `2` | The run stopped on an error: settings missing or unusable, the controller login failed, a session was rejected, or the cloud or controller gave an unusable answer. The message says which; the same command continues where it stopped |
 | `130` | Interrupted with Ctrl-C |
 
 Every run writes a log to `workdir/logs/<account>_<network>_<timestamp>.log`. A repeated run with the same arguments
@@ -211,7 +211,8 @@ During the run the tool stops without deleting anything if no device arrives in 
   [Recovery](#recovery)), then run the same command again.
 - **Switches (cnMatrix)** move only with `--include-switches`. Their port settings live per port, not in the
   profile, so the tool backs them up to `workdir/ports/` and writes them on the controller. Move switches only
-  with someone on site.
+  with someone on site. Without `--include-switches` a switch that already waits in the controller's onboarding
+  queue is neither adopted nor deleted from the cloud.
 - **Mesh.** The order is access points and mesh clients → mesh bases → switches. The mesh role comes from the WLAN's
   mesh mode, not from profile names.
 - **Names are kept 1:1.** Networks, sites, profiles and WLANs keep their cloud names. Use one cloud account per

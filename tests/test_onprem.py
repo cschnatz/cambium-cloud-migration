@@ -47,7 +47,9 @@ def test_login_uses_the_configured_timeout():
 
 
 @pytest.mark.parametrize("answer", [requests.Timeout("slow"), requests.ConnectionError("refused"),
-                                    FakeResp(status=504, raw={})])
+                                    FakeResp(status=504, raw={}),
+                                    FakeResp(text="<html>proxy</html>", content_type="text/html"),
+                                    FakeResp(raw={"error": "no token"})])
 def test_failed_login_is_not_retried_by_later_calls(answer):
     fs = FakeSession(responses={"/cn-srv/login": answer})
     o = controller(fs)

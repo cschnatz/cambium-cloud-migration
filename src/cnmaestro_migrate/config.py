@@ -93,7 +93,7 @@ def _secret(env, name, label, prompt, interactive):
 def load_settings(argv=None, env=None, prompt=getpass.getpass, interactive=None):
     a = build_parser().parse_args(argv)
     env = os.environ if env is None else env
-    interactive = sys.stdin.isatty() if interactive is None else interactive
+    interactive = bool(sys.stdin and sys.stdin.isatty()) if interactive is None else interactive
     cloud = _url(a.cloud_url, "--cloud-url")
     controller = _url(a.controller, "--controller")
     device = _url(a.device_address, "--device-address")

@@ -108,16 +108,19 @@ def apply_steps(steps, onprem, log):
 
 
 def run(s, cloud, onprem, confirm):
-    """Migrate every network of the settings with the same two sessions. Stops after an incomplete network."""
+    """Migrate every network of the settings with the same two sessions. Stops after an incomplete network.
+    Exit code 1 if a network ended incomplete or failed its pre-checks."""
+    failed = False
     for i, network in enumerate(s.networks):
         status = migrate_network(s, network, cloud, onprem, confirm)
         print(f"==== RESULT {network}: {status}", flush=True)
+        failed = failed or status == "precheck_failed"
         if plan.chain_stops(status):
             rest = list(s.networks[i + 1:])
             if rest:
                 print(f"==== STOPPED after {network} — networks not touched: {rest}", flush=True)
             return 1
-    return 0
+    return 1 if failed else 0
 
 
 def migrate_network(s, network, cloud, onprem, confirm):
@@ -136,6 +139,10 @@ def migrate_network(s, network, cloud, onprem, confirm):
     steps = plan.config_steps(sel, data.sites, data.profile_exports, data.wlan_exports)
     by_mac = {d["mac"]: d for d in sel.devices}
     targets = {m: plan.target_of(d) for m, d in by_mac.items()}
+    # A skipped switch may still wait in the queue from an earlier run; adopting it without its port backup
+    # would lose its port VLANs, and the cloud deletion could not be undone.
+    skipped = {d["mac"] for d in sel.skipped_switches}
+    adoptable = set(by_mac) - skipped
 
     # 2. back up switch ports
     port_plans, port_missing = {}, []
@@ -178,7 +185,7 @@ def migrate_network(s, network, cloud, onprem, confirm):
             log(f"ABORT: {reason}")
         return "precheck_failed"
     queued_now = lambda: {q["mac"] for q in onprem.queue()}
-    if not sel.migrate and not queued_now() & set(by_mac):
+    if not sel.migrate and not queued_now() & adoptable:
         log("Nothing to migrate.")
         return "nothing"
     if not s.execute:
@@ -227,7 +234,11 @@ def migrate_network(s, network, cloud, onprem, confirm):
 
     # 7. wait, assign, approve — every device of the selection in the queue, including stragglers of earlier runs
     wait_for(log, "in the controller's onboarding queue", moved, queued_now, s.wait_minutes)
-    arrived = sorted(queued_now() & set(by_mac))
+    queued = queued_now()
+    arrived = sorted(queued & adoptable)
+    if queued & skipped:
+        log(f"  NOTE switch(es) in the controller's onboarding queue, not adopted without --include-switches "
+            f"(their port VLANs would be lost): {sorted(queued & skipped)}")
     for m in sorted(set(moved) - set(arrived)):
         log(f"  NOT arrived: {m} — do not delete it; check it via SSH or on site (README, Recovery)")
     if not arrived:
