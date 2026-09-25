@@ -226,3 +226,47 @@ def prechecks(selection, export_errors, port_missing, allow_xv2_fw62):
 def chain_stops(status):
     """Several networks in one run: continue only if the previous one left nothing half done."""
     return status == "incomplete"
+
+
+def config_steps(selection, sites, profile_exports, wlan_exports):
+    """Objects the network needs on the controller, in import order: WLANs → profiles → network → sites.
+    Profiles reference WLANs by name only, so the WLANs must exist first. Offline devices' profiles are
+    included, so those devices find them when they come online. Objects whose export failed are skipped;
+    the pre-checks stop the run in that case."""
+    profiles = sorted(p for p in {profile_of(d) for d in selection.devices} - {""} if p in profile_exports)
+    wlans = sorted({w for p in profiles for w in ((profile_exports[p].get("policies") or {}).get("wlan") or [])})
+    steps = [{"kind": "wlan", "name": w, "payload": wlan_exports[w]} for w in wlans if w in wlan_exports]
+    steps += [{"kind": "profile", "name": p, "payload": fix_antgain(profile_exports[p])} for p in profiles]
+    steps.append({"kind": "network", "name": selection.network, "payload": None})
+    tids = ({s["tid"] for s in sites if s.get("nid") == selection.network and s.get("tid")}
+            | {d["tid"] for d in selection.devices if d.get("tid")})
+    steps += [{"kind": "site", "name": f"{selection.network} / {t}", "network": selection.network, "site": t,
+               "payload": None} for t in sorted(tids)]
+    return steps
+
+
+def mesh_roles(steps):
+    """Mesh role per profile, taken from its WLANs (src.basic.mesh_mode). Profile names are not reliable."""
+    wlan_mode = {s["name"]: ((s.get("payload") or {}).get("src") or {}).get("basic", {}).get("mesh_mode")
+                 for s in steps if s["kind"] == "wlan"}
+    roles = {}
+    for s in (s for s in steps if s["kind"] == "profile"):
+        modes = {wlan_mode.get(w) for w in (((s.get("payload") or {}).get("policies") or {}).get("wlan") or [])}
+        role = "base" if "base" in modes else "client" if "client" in modes else None
+        if role:
+            roles[s["name"]] = role
+    return roles
+
+
+PHASE_APS, PHASE_MESH_BASES, PHASE_SWITCHES = "APs", "mesh bases", "switches"
+
+
+def override_phases(profiles, roles=None):
+    """Order of the address switch: plain APs and mesh clients, then mesh bases, then switches. Each phase
+    starts only after the previous one arrived; switching an uplink earlier cuts off the job of the devices behind it."""
+    roles = roles or {}
+    aps = {p: m for p, m in sorted(profiles.items()) if m != "sw" and roles.get(p) != "base"}
+    bases = {p: m for p, m in sorted(profiles.items()) if m != "sw" and roles.get(p) == "base"}
+    switches = {p: m for p, m in sorted(profiles.items()) if m == "sw"}
+    return [(label, profs) for label, profs in ((PHASE_APS, aps), (PHASE_MESH_BASES, bases), (PHASE_SWITCHES, switches))
+            if profs]
