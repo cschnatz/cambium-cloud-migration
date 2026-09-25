@@ -1,0 +1,9 @@
+__pycache__/
+*.egg-info/
+.venv/
+.pytest_cache/
+build/
+dist/
+# Default working directory of the tool. It holds WLAN passphrases and device
+# admin passwords in clear text — never commit it.
+cnmaestro-migration/
