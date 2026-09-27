@@ -11,11 +11,14 @@ COMPARED_FIELDS = ("accessMode", "isNativeVlanTagged")
 
 def port_config(port):
     """Cloud port → controller port config. None means nothing to copy: a default port (PVID 1, no own
-    settings) or an auto-attach port, which the switch configures by itself."""
+    settings) or a pure auto-attach port with no stored VLANs, which the switch configures by itself.
+    An auto-attach port that DOES carry a stored VLAN set (e.g. a Cambium AP uplink tagged with several
+    VLANs) IS applied: otherwise the group-config overwrite on adoption strips it from all its VLANs and
+    the downstream AP loses its mgmt + SSID VLANs and goes offline."""
     cfg = port.get("config") or {}
-    if str((cfg.get("action") or {}).get("vlanName", "")).startswith("#CambiumAutoVlanClient"):
-        return None
     net = {k: v for k, v in (cfg.get("network") or {}).items() if k != "normalizedVlans"}
+    if str((cfg.get("action") or {}).get("vlanName", "")).startswith("#CambiumAutoVlanClient") and not net.get("vlans"):
+        return None
     native = port.get("nativeVlanId")
     if not net and native in (None, 1):
         net = None
@@ -42,7 +45,15 @@ def _vlan_set(value):
 
 def port_mismatches(plan, controller_ports):
     """Target (plan) against the controller: stored value (config.network) and live value (nativeVlanId)."""
-    by_mac, out = {p["mac"].lower(): p for p in controller_ports}, []
+    # cnMatrix gives the first physical port and the VLAN/mgmt SVIs the same MAC. A plain {mac: port} index
+    # would let an SVI (which carries no network config) shadow the real switchport, so a correctly applied
+    # port reads back as "not stored". Index by MAC keeping the entry that actually carries a network config.
+    by_mac, out = {}, []
+    for p in controller_ports:
+        m = p["mac"].lower()
+        prev = by_mac.get(m)
+        if prev is None or ((p.get("config") or {}).get("network") and not (prev.get("config") or {}).get("network")):
+            by_mac[m] = p
     for entry in plan:
         want = entry["config"].get("network")
         cur = by_mac.get(entry["mac"].lower())

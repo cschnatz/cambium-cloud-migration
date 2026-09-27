@@ -36,11 +36,20 @@ def test_security_and_physical_are_kept():
                               "physical": {"poe": 2}}
 
 
-def test_default_and_auto_attach_ports_are_skipped():
+def test_default_and_empty_auto_attach_ports_are_skipped():
     assert port_config(cport(8)) is None
     assert port_config(cport(9, native=None)) is None
-    auto = cport(10, network={"vlans": [1, 42]}, action={"vlanName": "#CambiumAutoVlanClient_If10", "portMode": 4})
-    assert port_config(auto) is None
+    # pure auto-attach with no stored VLANs: the switch configures it itself → skipped
+    assert port_config(cport(10, action={"vlanName": "#CambiumAutoVlanClient_If10", "portMode": 4})) is None
+
+
+def test_auto_attach_with_stored_vlans_is_applied():
+    # Cambium AP uplink: auto-attach action but a real VLAN set must be applied, or the group overwrite
+    # strips the port from its VLANs on adoption and the AP goes offline.
+    auto = cport(1, native=10, network={"vlans": [1, 10, 11, 12, 14, 16], "nativeVlan": "10", "accessMode": 3,
+                                        "normalizedVlans": [{"start": 1, "end": 1}]},
+                 action={"vlanName": "#CambiumAutoVlanClient_If1", "portMode": 4, "vlanData": "1,10,11,12,14,16"})
+    assert port_config(auto) == {"network": {"vlans": "1,10,11,12,14,16", "nativeVlan": "10", "accessMode": 3}}
 
 
 def test_port_plan_builds_the_payload_per_switch():
@@ -60,6 +69,21 @@ def test_mismatches_compare_stored_and_live_values():
     assert port_mismatches(plan, onprem) == ["P1: device PVID 1 instead of 85", "P2: not stored on the controller"]
     onprem[0]["config"]["network"] = {"vlans": "1", "nativeVlan": "1"}
     assert port_mismatches(plan, onprem)[0] == "P1: stored 1/1 instead of 85/85"
+
+
+def test_svi_sharing_a_port_mac_does_not_shadow_the_switchport():
+    # cnMatrix gives Gi0/1 and the vlan/mgmt SVIs the same MAC; the SVI (no network) must not shadow the
+    # real switchport, or a correctly applied port reads back as "not stored" and the sync loops forever.
+    plan = [{"mac": "aa", "pmac": "P", "config": {"network": {"vlans": "1,10", "nativeVlan": "10", "accessMode": 3}}}]
+    controller = [
+        {"mac": "AA", "ifIndex": 1, "nativeVlanId": 10,
+         "config": {"network": {"vlans": "10,1", "nativeVlan": "10", "accessMode": 3}}},   # Gi0/1, applied
+        {"mac": "AA", "ifIndex": 62, "nativeVlanId": None, "config": {"action": {}}},        # vlan1 SVI, no network
+        {"mac": "AA", "ifIndex": 63, "nativeVlanId": None, "config": {}},                    # vlan10 SVI, no network
+    ]
+    assert port_mismatches(plan, controller) == []
+    # order-independent: SVIs listed before the switchport
+    assert port_mismatches(plan, list(reversed(controller))) == []
 
 
 def test_mismatches_compare_access_mode_and_native_tagging():
